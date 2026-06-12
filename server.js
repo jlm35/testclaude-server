@@ -124,23 +124,30 @@ io.on('connection', (socket) => {
   // ── player:join ──────────────────────────────────────────────────────────────
 
   socket.on('player:join', (data) => {
-    const { username, lat, lng } = data
+    const { username, lat, lng, savedState } = data
     if (!username || typeof lat !== 'number' || typeof lng !== 'number') return
+
+    const sv = savedState || {}
+    const level    = Number.isInteger(sv.level)    && sv.level    >= 1 ? sv.level    : 1
+    const xp       = typeof sv.xp       === 'number' && sv.xp       >= 0 ? sv.xp       : 0
+    const resources = typeof sv.resources === 'number' && sv.resources >= 0 ? sv.resources : 0
+    const cityHp    = typeof sv.cityHp    === 'number' && sv.cityHp    >= 0 ? sv.cityHp    : 100
+    const cityMaxHp = typeof sv.cityMaxHp === 'number' && sv.cityMaxHp > 0  ? sv.cityMaxHp : 100
 
     const player = {
       id:            socket.id,
       username:      username.substring(0, 20).replace(/[<>]/g, ''),
       lat, lng,
-      level:         1,
-      xp:            0,
-      resources:     0,
+      level,
+      xp,
+      resources,
       lastAttack:    0,
       lastPvpAttack: 0,
       lastLat:       lat,
       lastLng:       lng,
       lastMoveTs:    Date.now(),
-      cityHp:        100,
-      cityMaxHp:     100,
+      cityHp:        Math.min(cityHp, cityMaxHp),
+      cityMaxHp,
       isDefeated:    false,
       respawnAt:     null
     }
