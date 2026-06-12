@@ -16,11 +16,11 @@ const ENEMIES_PER_ZONE = 8
 const RESPAWN_DELAY    = 2 * 60 * 1000  // 2 minutes
 
 const ENEMY_TYPES = [
-  { type: 'scout',    level: 1, hp: 30,  xp: 10, resources: 5,  name: 'Éclaireur Alien' },
-  { type: 'soldier',  level: 2, hp: 60,  xp: 20, resources: 10, name: 'Soldat Alien' },
-  { type: 'gunship',  level: 3, hp: 100, xp: 30, resources: 15, name: 'Vaisseau Alien' },
-  { type: 'fighter',  level: 4, hp: 150, xp: 40, resources: 20, name: 'Chasseur Alien' },
-  { type: 'overlord', level: 5, hp: 200, xp: 50, resources: 25, name: 'Seigneur Alien' },
+  { type: 'scout',    level: 1, hp: 30,  xp: 10, resources: 5,  fer: 5,  name: 'Éclaireur Alien' },
+  { type: 'soldier',  level: 2, hp: 60,  xp: 20, resources: 10, fer: 12, name: 'Soldat Alien' },
+  { type: 'gunship',  level: 3, hp: 100, xp: 30, resources: 15, fer: 22, name: 'Vaisseau Alien' },
+  { type: 'fighter',  level: 4, hp: 150, xp: 40, resources: 20, fer: 35, name: 'Chasseur Alien' },
+  { type: 'overlord', level: 5, hp: 200, xp: 50, resources: 25, fer: 50, name: 'Seigneur Alien' },
 ]
 
 // ── State ──────────────────────────────────────────────────────────────────────
@@ -228,7 +228,7 @@ io.on('connection', (socket) => {
       const newLevel = computeLevel(player.xp)
       if (newLevel > player.level) player.level = newLevel
 
-      socket.emit('player:reward', { xp: enemy.xp, resources: enemy.resources })
+      socket.emit('player:reward', { xp: enemy.xp, resources: enemy.resources, fer: enemy.fer })
 
       // Respawn après délai
       const spawnLat = enemy.lat
