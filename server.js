@@ -241,6 +241,13 @@ io.on('connection', (socket) => {
     } else {
       // Ennemi touché
       io.emit('enemy:hit', { enemy_id, hp: enemy.hp, player_id: socket.id })
+
+      // Riposte de l'ennemi (60-80% selon niveau)
+      const retaliationChance = 0.6 + (enemy.level - 1) * 0.05
+      if (Math.random() < retaliationChance) {
+        const baseDamage = enemy.level * 8  // 8, 16, 24, 32, 40
+        socket.emit('city:hit', { damage: baseDamage, enemy_name: enemy.name })
+      }
     }
   })
 
