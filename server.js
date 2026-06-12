@@ -96,7 +96,8 @@ function getEnemiesNear(lat, lng, radius) {
 
 function getPlayersExcept(socketId) {
   return [...players.values()].filter(p => p.id !== socketId).map(p => ({
-    id: p.id, username: p.username, lat: p.lat, lng: p.lng, level: p.level
+    id: p.id, username: p.username, lat: p.lat, lng: p.lng, level: p.level,
+    cityHp: p.cityHp, cityMaxHp: p.cityMaxHp, isDefeated: p.isDefeated
   }))
 }
 
@@ -127,16 +128,21 @@ io.on('connection', (socket) => {
     if (!username || typeof lat !== 'number' || typeof lng !== 'number') return
 
     const player = {
-      id:         socket.id,
-      username:   username.substring(0, 20).replace(/[<>]/g, ''),
+      id:            socket.id,
+      username:      username.substring(0, 20).replace(/[<>]/g, ''),
       lat, lng,
-      level:      1,
-      xp:         0,
-      resources:  0,
-      lastAttack: 0,
-      lastLat:    lat,
-      lastLng:    lng,
-      lastMoveTs: Date.now()
+      level:         1,
+      xp:            0,
+      resources:     0,
+      lastAttack:    0,
+      lastPvpAttack: 0,
+      lastLat:       lat,
+      lastLng:       lng,
+      lastMoveTs:    Date.now(),
+      cityHp:        100,
+      cityMaxHp:     100,
+      isDefeated:    false,
+      respawnAt:     null
     }
     players.set(socket.id, player)
 
@@ -147,13 +153,13 @@ io.on('connection', (socket) => {
     })
 
     // Envoyer l'état initial au joueur
-    const nearbyEnemies  = getEnemiesNear(lat, lng, SPAWN_RADIUS + 2000)
-    const otherPlayers   = getPlayersExcept(socket.id)
+    const nearbyEnemies = getEnemiesNear(lat, lng, SPAWN_RADIUS + 2000)
+    const otherPlayers  = getPlayersExcept(socket.id)
     socket.emit('game:init', { enemies: nearbyEnemies, players: otherPlayers })
 
-    // Notifier les autres
     socket.broadcast.emit('player:joined', {
-      id: player.id, username: player.username, lat, lng, level: player.level
+      id: player.id, username: player.username, lat, lng, level: player.level,
+      cityHp: player.cityHp, cityMaxHp: player.cityMaxHp, isDefeated: false
     })
 
     console.log(`[JOIN] ${username} (${lat.toFixed(5)}, ${lng.toFixed(5)})`)
@@ -248,6 +254,64 @@ io.on('connection', (socket) => {
         const baseDamage = enemy.level * 8  // 8, 16, 24, 32, 40
         socket.emit('city:hit', { damage: baseDamage, enemy_name: enemy.name })
       }
+    }
+  })
+
+  // ── player:attack (PvP) ──────────────────────────────────────────────────────
+
+  socket.on('player:attack', (data) => {
+    const attacker = players.get(socket.id)
+    if (!attacker || attacker.isDefeated) return
+
+    const target = players.get(data.target_id)
+    if (!target || target.isDefeated || data.target_id === socket.id) return
+
+    const now = Date.now()
+    if (now - attacker.lastPvpAttack < ATTACK_COOLDOWN - 200) return
+    attacker.lastPvpAttack = now
+
+    const dist = haversine(attacker.lat, attacker.lng, target.lat, target.lng)
+    if (dist > ATTACK_RANGE + 200) return
+
+    const damage = 30 + (attacker.level - 1) * 5
+    target.cityHp = Math.max(0, target.cityHp - damage)
+
+    // Avertir la cible
+    io.to(data.target_id).emit('city:pvp:hit', {
+      damage, attacker_name: attacker.username,
+      hp: target.cityHp, maxHp: target.cityMaxHp
+    })
+
+    // Confirmer à l'attaquant
+    socket.emit('pvp:hit:confirm', {
+      target_id: data.target_id, hp: target.cityHp, maxHp: target.cityMaxHp
+    })
+
+    if (target.cityHp <= 0) {
+      target.isDefeated = true
+      target.respawnAt  = now + 10 * 60 * 1000
+
+      io.to(data.target_id).emit('city:defeated', { attacker_name: attacker.username })
+      io.emit('player:defeated', { id: data.target_id })
+
+      setTimeout(() => {
+        const p = players.get(data.target_id)
+        if (!p) return
+        p.isDefeated = false
+        p.cityHp     = Math.max(1, Math.round(p.cityMaxHp * 0.1))
+        p.respawnAt  = null
+        io.to(data.target_id).emit('city:revived', { cityHp: p.cityHp, cityMaxHp: p.cityMaxHp })
+        io.emit('player:revived', { id: data.target_id })
+      }, 10 * 60 * 1000)
+    }
+  })
+
+  // ── enemy retaliation → sync cityHp server-side ───────────────────────────────
+
+  socket.on('city:sync', (data) => {
+    const player = players.get(socket.id)
+    if (player && typeof data.cityHp === 'number') {
+      player.cityHp    = Math.max(0, Math.min(data.cityHp, player.cityMaxHp))
     }
   })
 
